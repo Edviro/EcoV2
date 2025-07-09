@@ -1,6 +1,7 @@
 // src/context/AppContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { DEMO_PRODUCTS, DEMO_MOVEMENTS, DEMO_USERS } from '../utils/mockData';
+import { productService, movementService, userService, settingsService } from '../services/supabaseService';
+import toast from 'react-hot-toast';
 
 const AppContext = createContext();
 
@@ -13,13 +14,14 @@ export const useApp = () => {
 };
 
 export const AppProvider = ({ children }) => {
-  // ESTADO GLOBAL - TODO CONECTADO
+  // ESTADO GLOBAL
   const [user, setUser] = useState(null);
-  const [products, setProducts] = useState(DEMO_PRODUCTS);
-  const [movements, setMovements] = useState(DEMO_MOVEMENTS);
-  const [users, setUsers] = useState(DEMO_USERS);
+  const [products, setProducts] = useState([]);
+  const [movements, setMovements] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   
-  // CATEGORÍAS Y UBICACIONES DINÁMICAS
+  // CATEGORÍAS Y UBICACIONES (mantenidas localmente)
   const [categories, setCategories] = useState([
     "Arena para Gatos",
     "Accesorios",
@@ -35,7 +37,7 @@ export const AppProvider = ({ children }) => {
     "Depósito"
   ]);
   
-  // CONFIGURACIÓN GLOBAL - Cambios se reflejan en TODO el sistema
+  // CONFIGURACIÓN GLOBAL
   const [settings, setSettings] = useState({
     currency: 'PEN',
     currencySymbol: 'S/',
@@ -49,75 +51,322 @@ export const AppProvider = ({ children }) => {
     address: 'Av. Principal 123, Lima, Perú'
   });
 
-  // Cargar datos del localStorage al iniciar
+  // CARGAR DATOS INICIALES
   useEffect(() => {
-    const savedSettings = localStorage.getItem('econoarena_settings');
-    const savedUser = localStorage.getItem('econoarena_user');
-    const savedCategories = localStorage.getItem('econoarena_categories');
-    const savedLocations = localStorage.getItem('econoarena_locations');
-    const savedProducts = localStorage.getItem('econoarena_products');
-    const savedMovements = localStorage.getItem('econoarena_movements');
-    
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    }
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    if (savedCategories) {
-      setCategories(JSON.parse(savedCategories));
-    }
-    if (savedLocations) {
-      setLocations(JSON.parse(savedLocations));
-    }
-    if (savedProducts) {
-      setProducts(JSON.parse(savedProducts));
-    }
-    if (savedMovements) {
-      setMovements(JSON.parse(savedMovements));
-    }
+    const initializeApp = async () => {
+      setLoading(true);
+      
+      // Verificar usuario guardado
+      const savedUser = localStorage.getItem('econoarena_user');
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+      }
+
+      // Cargar configuración
+      await loadSettings();
+      
+      // Cargar datos si hay usuario
+      if (savedUser) {
+        await Promise.all([
+          loadProducts(),
+          loadMovements(),
+          loadUsers()
+        ]);
+      }
+
+      setLoading(false);
+    };
+
+    initializeApp();
   }, []);
 
-  // Guardar cambios en localStorage
-  useEffect(() => {
-    localStorage.setItem('econoarena_categories', JSON.stringify(categories));
-  }, [categories]);
-
-  useEffect(() => {
-    localStorage.setItem('econoarena_locations', JSON.stringify(locations));
-  }, [locations]);
-
-  useEffect(() => {
-    localStorage.setItem('econoarena_products', JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem('econoarena_movements', JSON.stringify(movements));
-  }, [movements]);
-
-  // FUNCIONES QUE CONECTAN TODOS LOS MÓDULOS
-
-  // Login con datos demo
-  const login = (username, password) => {
-    const foundUser = DEMO_USERS.find(u => 
-      u.username === username && u.password === password
-    );
-    
-    if (foundUser) {
-      const { password, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('econoarena_user', JSON.stringify(userWithoutPassword));
-      return true;
+  // CARGAR CONFIGURACIÓN
+  const loadSettings = async () => {
+    try {
+      const result = await settingsService.get();
+      if (result.success) {
+        const dbSettings = result.data;
+        const mappedSettings = {
+          currency: dbSettings.currency,
+          currencySymbol: dbSettings.currency_symbol,
+          company: dbSettings.company,
+          theme: dbSettings.theme,
+          language: dbSettings.language,
+          lowStockThreshold: dbSettings.low_stock_threshold,
+          email: dbSettings.email,
+          phone: dbSettings.phone,
+          address: dbSettings.address
+        };
+        setSettings(mappedSettings);
+        
+        // Aplicar tema inmediatamente
+        document.documentElement.setAttribute('data-theme', mappedSettings.theme);
+      }
+    } catch (error) {
+      console.error('Error al cargar configuración:', error);
     }
-    return false;
   };
 
+  // CARGAR PRODUCTOS
+  const loadProducts = async () => {
+    try {
+      const result = await productService.getAll();
+      if (result.success) {
+        const mappedProducts = result.data.map(product => ({
+          id: product.id,
+          name: product.name,
+          sku: product.sku,
+          category: product.category,
+          location: product.location,
+          price: product.price,
+          stock: product.stock,
+          minStock: product.min_stock,
+          description: product.description,
+          createdAt: product.created_at
+        }));
+        setProducts(mappedProducts);
+      }
+    } catch (error) {
+      console.error('Error al cargar productos:', error);
+      toast.error('Error al cargar productos');
+    }
+  };
+
+  // CARGAR MOVIMIENTOS
+  const loadMovements = async () => {
+    try {
+      const result = await movementService.getAll();
+      if (result.success) {
+        const mappedMovements = result.data.map(movement => ({
+          id: movement.id,
+          productId: movement.product_id,
+          product: movement.products?.name || 'Producto eliminado',
+          type: movement.type,
+          quantity: movement.quantity,
+          reason: movement.reason,
+          notes: movement.notes,
+          user: movement.user_name,
+          reference: movement.reference,
+          date: movement.created_at
+        }));
+        setMovements(mappedMovements);
+      }
+    } catch (error) {
+      console.error('Error al cargar movimientos:', error);
+      toast.error('Error al cargar movimientos');
+    }
+  };
+
+  // CARGAR USUARIOS
+  const loadUsers = async () => {
+    try {
+      const result = await userService.getAll();
+      if (result.success) {
+        setUsers(result.data);
+      }
+    } catch (error) {
+      console.error('Error al cargar usuarios:', error);
+      toast.error('Error al cargar usuarios');
+    }
+  };
+
+  // LOGIN
+  const login = async (username, password) => {
+    try {
+      const result = await userService.login(username, password);
+      if (result.success) {
+        setUser(result.data);
+        localStorage.setItem('econoarena_user', JSON.stringify(result.data));
+        
+        // Cargar datos después del login
+        await Promise.all([
+          loadProducts(),
+          loadMovements(),
+          loadUsers()
+        ]);
+        
+        return true;
+      } else {
+        toast.error(result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error en login:', error);
+      toast.error('Error al iniciar sesión');
+      return false;
+    }
+  };
+
+  // LOGOUT
   const logout = () => {
     setUser(null);
+    setProducts([]);
+    setMovements([]);
+    setUsers([]);
     localStorage.removeItem('econoarena_user');
   };
 
-  // GESTIÓN DE CATEGORÍAS
+  // AGREGAR PRODUCTO
+  const addProduct = async (productData) => {
+    try {
+      const result = await productService.create(productData);
+      if (result.success) {
+        await loadProducts();
+        toast.success('Producto agregado correctamente');
+        return result.data;
+      } else {
+        toast.error(result.error);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error al agregar producto:', error);
+      toast.error('Error al agregar producto');
+      return null;
+    }
+  };
+
+  // ACTUALIZAR PRODUCTO
+  const updateProduct = async (id, updates) => {
+    try {
+      const result = await productService.update(id, updates);
+      if (result.success) {
+        await loadProducts();
+        toast.success('Producto actualizado correctamente');
+        return result.data;
+      } else {
+        toast.error(result.error);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error al actualizar producto:', error);
+      toast.error('Error al actualizar producto');
+      return null;
+    }
+  };
+
+  // ELIMINAR PRODUCTO
+  const deleteProduct = async (id) => {
+    try {
+      const result = await productService.delete(id);
+      if (result.success) {
+        await loadProducts();
+        await loadMovements();
+        toast.success('Producto eliminado correctamente');
+        return true;
+      } else {
+        toast.error(result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error al eliminar producto:', error);
+      toast.error('Error al eliminar producto');
+      return false;
+    }
+  };
+
+  // AGREGAR MOVIMIENTO
+  const addMovement = async (movementData) => {
+    try {
+      const result = await movementService.create({
+        ...movementData,
+        user: user?.name || 'Usuario'
+      });
+      
+      if (result.success) {
+        await loadProducts(); // Stock actualizado automáticamente
+        await loadMovements();
+        toast.success(`${movementData.type === 'entrada' ? 'Entrada' : 'Salida'} registrada correctamente`);
+        return result.data;
+      } else {
+        toast.error(result.error);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error al agregar movimiento:', error);
+      toast.error('Error al registrar movimiento');
+      return null;
+    }
+  };
+
+  // AGREGAR USUARIO
+  const addUser = async (userData) => {
+    try {
+      const result = await userService.create(userData);
+      if (result.success) {
+        await loadUsers();
+        toast.success('Usuario creado correctamente');
+        return result.data;
+      } else {
+        toast.error(result.error);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error al crear usuario:', error);
+      toast.error('Error al crear usuario');
+      return null;
+    }
+  };
+
+  // ACTUALIZAR USUARIO
+  const updateUser = async (id, updates) => {
+    try {
+      const result = await userService.update(id, updates);
+      if (result.success) {
+        await loadUsers();
+        toast.success('Usuario actualizado correctamente');
+        return result.data;
+      } else {
+        toast.error(result.error);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error al actualizar usuario:', error);
+      toast.error('Error al actualizar usuario');
+      return null;
+    }
+  };
+
+  // ELIMINAR USUARIO
+  const deleteUser = async (id) => {
+    try {
+      const result = await userService.delete(id);
+      if (result.success) {
+        await loadUsers();
+        toast.success('Usuario eliminado correctamente');
+        return true;
+      } else {
+        toast.error(result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error al eliminar usuario:', error);
+      toast.error('Error al eliminar usuario');
+      return false;
+    }
+  };
+
+  // ACTUALIZAR CONFIGURACIÓN
+  const updateSettings = async (newSettings) => {
+    try {
+      const updated = { ...settings, ...newSettings };
+      setSettings(updated);
+      
+      const result = await settingsService.update(updated);
+      if (result.success) {
+        if (newSettings.theme) {
+          document.documentElement.setAttribute('data-theme', newSettings.theme);
+        }
+        toast.success('Configuración actualizada correctamente');
+      } else {
+        toast.error(result.error);
+      }
+    } catch (error) {
+      console.error('Error al actualizar configuración:', error);
+      toast.error('Error al actualizar configuración');
+    }
+  };
+
+  // GESTIÓN DE CATEGORÍAS (local)
   const addCategory = (categoryName) => {
     const trimmedName = categoryName.trim();
     if (trimmedName && !categories.includes(trimmedName)) {
@@ -131,13 +380,6 @@ export const AppProvider = ({ children }) => {
     const trimmedNewName = newName.trim();
     if (trimmedNewName && !categories.includes(trimmedNewName)) {
       setCategories(prev => prev.map(cat => cat === oldName ? trimmedNewName : cat));
-      
-      // Actualizar productos que usen esta categoría
-      setProducts(prev => prev.map(product => 
-        product.category === oldName 
-          ? { ...product, category: trimmedNewName }
-          : product
-      ));
       return true;
     }
     return false;
@@ -153,7 +395,7 @@ export const AppProvider = ({ children }) => {
     return { success: true };
   };
 
-  // GESTIÓN DE UBICACIONES
+  // GESTIÓN DE UBICACIONES (local)
   const addLocation = (locationName) => {
     const trimmedName = locationName.trim();
     if (trimmedName && !locations.includes(trimmedName)) {
@@ -167,13 +409,6 @@ export const AppProvider = ({ children }) => {
     const trimmedNewName = newName.trim();
     if (trimmedNewName && !locations.includes(trimmedNewName)) {
       setLocations(prev => prev.map(loc => loc === oldName ? trimmedNewName : loc));
-      
-      // Actualizar productos que usen esta ubicación
-      setProducts(prev => prev.map(product => 
-        product.location === oldName 
-          ? { ...product, location: trimmedNewName }
-          : product
-      ));
       return true;
     }
     return false;
@@ -189,105 +424,7 @@ export const AppProvider = ({ children }) => {
     return { success: true };
   };
 
-  // Agregar producto - Se refleja automáticamente en Dashboard
-  const addProduct = (productData) => {
-    const newProduct = {
-      ...productData,
-      id: Date.now(),
-      createdAt: new Date().toISOString()
-    };
-    setProducts(prev => [...prev, newProduct]);
-    
-    // Auto-generar movimiento de entrada inicial
-    if (productData.initialStock > 0) {
-      addMovement({
-        productId: newProduct.id,
-        product: newProduct.name,
-        type: 'entrada',
-        quantity: productData.initialStock,
-        reason: 'Stock inicial',
-        user: user?.name || 'Sistema'
-      });
-    }
-    
-    return newProduct;
-  };
-
-  // Actualizar producto
-  const updateProduct = (id, updates) => {
-    setProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, ...updates } : p
-    ));
-  };
-
-  // Eliminar producto
-  const deleteProduct = (id) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-    setMovements(prev => prev.filter(m => m.productId !== id));
-  };
-
-  // Agregar movimiento - ACTUALIZA STOCK AUTOMÁTICAMENTE
-  const addMovement = (movementData) => {
-    const newMovement = {
-      ...movementData,
-      id: Date.now(),
-      date: new Date().toISOString(),
-      reference: `${movementData.type.toUpperCase()}-${new Date().getFullYear()}-${String(movements.length + 1).padStart(3, '0')}`
-    };
-
-    // CONEXIÓN CLAVE: Actualizar stock del producto
-    const product = products.find(p => p.id === movementData.productId);
-    if (product) {
-      const stockChange = movementData.type === 'entrada' 
-        ? movementData.quantity 
-        : -movementData.quantity;
-      
-      updateProduct(movementData.productId, {
-        stock: Math.max(0, product.stock + stockChange),
-        lastMovement: new Date().toISOString()
-      });
-    }
-
-    setMovements(prev => [...prev, newMovement]);
-    return newMovement;
-  };
-
-  // Actualizar configuración - SE REFLEJA EN TODO EL SISTEMA
-  const updateSettings = (newSettings) => {
-    const updated = { ...settings, ...newSettings };
-    setSettings(updated);
-    localStorage.setItem('econoarena_settings', JSON.stringify(updated));
-    
-    // Aplicar tema inmediatamente
-    if (newSettings.theme) {
-      document.documentElement.setAttribute('data-theme', newSettings.theme);
-    }
-  };
-
-  // Gestión de usuarios (solo admin)
-  const addUser = (userData) => {
-    const newUser = {
-      ...userData,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-      lastAccess: null,
-      status: 'active'
-    };
-    setUsers(prev => [...prev, newUser]);
-    return newUser;
-  };
-
-  const updateUser = (id, updates) => {
-    setUsers(prev => prev.map(u => 
-      u.id === id ? { ...u, ...updates } : u
-    ));
-  };
-
-  const deleteUser = (id) => {
-    setUsers(prev => prev.filter(u => u.id !== id));
-  };
-
-  // MÉTRICAS CALCULADAS EN TIEMPO REAL
+  // MÉTRICAS CALCULADAS
   const metrics = {
     totalProducts: products.length,
     totalStock: products.reduce((sum, p) => sum + p.stock, 0),
@@ -310,7 +447,7 @@ export const AppProvider = ({ children }) => {
     }).length
   };
 
-  // PERMISOS DINÁMICOS
+  // PERMISOS
   const hasPermission = (module) => {
     if (!user) return false;
     if (user.role === 'admin') return true;
@@ -328,12 +465,12 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Formatear moneda usando configuración global
+  // FORMATEAR MONEDA
   const formatCurrency = (amount) => {
     return `${settings.currencySymbol} ${amount.toFixed(2)}`;
   };
 
-  // Aplicar tema al cargar
+  // Aplicar tema
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
   }, [settings.theme]);
@@ -348,40 +485,31 @@ export const AppProvider = ({ children }) => {
     categories,
     locations,
     metrics,
+    loading,
     
-    // Funciones de autenticación
+    // Funciones
     login,
     logout,
-    
-    // Funciones de productos
     addProduct,
     updateProduct,
     deleteProduct,
-    
-    // Funciones de movimientos
     addMovement,
-    
-    // Funciones de usuarios
     addUser,
     updateUser,
     deleteUser,
-    
-    // Funciones de configuración
     updateSettings,
-    
-    // Funciones de categorías
     addCategory,
     updateCategory,
     deleteCategory,
-    
-    // Funciones de ubicaciones
     addLocation,
     updateLocation,
     deleteLocation,
-    
-    // Utilidades
     hasPermission,
-    formatCurrency
+    formatCurrency,
+    loadProducts,
+    loadMovements,
+    loadUsers,
+    loadSettings
   };
 
   return (

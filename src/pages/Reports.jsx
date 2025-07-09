@@ -8,7 +8,8 @@ import {
   Form, 
   Table,
   Badge,
-  Alert
+  Alert,
+  Spinner
 } from 'react-bootstrap';
 import { 
   FaFileAlt, 
@@ -21,7 +22,9 @@ import {
   FaExclamationTriangle,
   FaGem,
   FaCalendarAlt,
-  FaFilter
+  FaFilter,
+  FaFileExcel,
+  FaFilePdf
 } from 'react-icons/fa';
 import { useApp } from '../context/AppContext';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
@@ -43,6 +46,7 @@ const Reports = () => {
   });
   const [generatedReport, setGeneratedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const reportTypes = [
     {
@@ -308,15 +312,379 @@ const Reports = () => {
     };
   };
 
-  const exportReport = () => {
+  // EXPORTACIÓN REAL A EXCEL
+  const exportToExcel = async () => {
     if (!generatedReport) {
       toast.error('Genera un reporte primero');
       return;
     }
 
-    // Simular exportación
-    toast.success('Reporte exportado a Excel (simulado)');
+    setExporting(true);
+    
+    try {
+      // Importar XLSX dinámicamente
+      const XLSX = await import('xlsx');
+      
+      const wb = XLSX.utils.book_new();
+      
+      // Hoja de resumen
+      const summaryData = [
+        ['REPORTE:', generatedReport.title],
+        ['FECHA GENERACIÓN:', format(new Date(), 'dd/MM/yyyy HH:mm')],
+        ['PERÍODO:', `${dateRange.from} al ${dateRange.to}`],
+        ['EMPRESA:', settings.company],
+        [''],
+        ['RESUMEN EJECUTIVO:'],
+        ...Object.entries(generatedReport.summary).map(([key, value]) => [
+          key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()),
+          typeof value === 'number' && key.includes('Value') ? formatCurrency(value) : value
+        ])
+      ];
+      
+      const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Resumen');
+
+      // Hoja de datos detallados según el tipo de reporte
+      switch (generatedReport.type) {
+        case 'inventory':
+          // Hoja de productos
+          const productsData = [
+            ['Producto', 'SKU', 'Categoría', 'Ubicación', 'Stock', 'Stock Mínimo', 'Precio Unitario', 'Valor Total', 'Estado'],
+            ...generatedReport.data.products.map(product => [
+              product.name,
+              product.sku,
+              product.category,
+              product.location,
+              product.stock,
+              product.minStock || settings.lowStockThreshold,
+              product.price,
+              product.stock * product.price,
+              product.stock <= (product.minStock || settings.lowStockThreshold) ? 'Stock Bajo' : 'Normal'
+            ])
+          ];
+          const productsWs = XLSX.utils.aoa_to_sheet(productsData);
+          XLSX.utils.book_append_sheet(wb, productsWs, 'Productos');
+
+          // Hoja de categorías
+          const categoriesData = [
+            ['Categoría', 'Cantidad Productos', 'Stock Total', 'Valor Total'],
+            ...Object.entries(generatedReport.data.categorySummary).map(([category, data]) => [
+              category,
+              data.count,
+              data.stock,
+              data.value
+            ])
+          ];
+          const categoriesWs = XLSX.utils.aoa_to_sheet(categoriesData);
+          XLSX.utils.book_append_sheet(wb, categoriesWs, 'Por Categoría');
+          break;
+
+        case 'movements':
+          const movementsData = [
+            ['Fecha', 'Producto', 'Tipo', 'Cantidad', 'Motivo', 'Usuario', 'Referencia'],
+            ...generatedReport.data.movements.map(movement => [
+              format(new Date(movement.date), 'dd/MM/yyyy HH:mm'),
+              movement.product,
+              movement.type,
+              movement.quantity,
+              movement.reason,
+              movement.user,
+              movement.reference
+            ])
+          ];
+          const movementsWs = XLSX.utils.aoa_to_sheet(movementsData);
+          XLSX.utils.book_append_sheet(wb, movementsWs, 'Movimientos');
+          break;
+
+        case 'sales':
+          if (generatedReport.data.topProducts.length > 0) {
+            const salesData = [
+              ['Producto', 'Cantidad Vendida', 'Número de Ventas'],
+              ...generatedReport.data.topProducts.map(product => [
+                product.product,
+                product.quantity,
+                product.sales
+              ])
+            ];
+            const salesWs = XLSX.utils.aoa_to_sheet(salesData);
+            XLSX.utils.book_append_sheet(wb, salesWs, 'Productos Vendidos');
+          }
+          break;
+
+        case 'alerts':
+          if (generatedReport.data.lowStockProducts.length > 0) {
+            const alertsData = [
+              ['Producto', 'SKU', 'Stock Actual', 'Stock Mínimo', 'Diferencia', 'Categoría'],
+              ...generatedReport.data.lowStockProducts.map(product => [
+                product.name,
+                product.sku,
+                product.stock,
+                product.minStock || settings.lowStockThreshold,
+                (product.minStock || settings.lowStockThreshold) - product.stock,
+                product.category
+              ])
+            ];
+            const alertsWs = XLSX.utils.aoa_to_sheet(alertsData);
+            XLSX.utils.book_append_sheet(wb, alertsWs, 'Productos Stock Bajo');
+          }
+          break;
+
+        case 'valuation':
+          // Hoja de valorización por categoría
+          const valuationData = [
+            ['Categoría', 'Valor Total', '% del Total'],
+            ...Object.entries(generatedReport.data.categoryValues)
+              .sort(([,a], [,b]) => b - a)
+              .map(([category, value]) => [
+                category,
+                value,
+                ((value / generatedReport.summary.totalValue) * 100).toFixed(2) + '%'
+              ])
+          ];
+          const valuationWs = XLSX.utils.aoa_to_sheet(valuationData);
+          XLSX.utils.book_append_sheet(wb, valuationWs, 'Valorización por Categoría');
+
+          // Hoja de productos de mayor valor
+          const topValueData = [
+            ['Producto', 'SKU', 'Stock', 'Precio Unitario', 'Valor Total'],
+            ...generatedReport.data.topValueProducts.map(product => [
+              product.name,
+              product.sku,
+              product.stock,
+              product.price,
+              product.totalValue
+            ])
+          ];
+          const topValueWs = XLSX.utils.aoa_to_sheet(topValueData);
+          XLSX.utils.book_append_sheet(wb, topValueWs, 'Top Productos por Valor');
+          break;
+      }
+
+      // Descargar archivo
+      const fileName = `${generatedReport.title.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      toast.success('Reporte exportado a Excel correctamente');
+    } catch (error) {
+      console.error('Error al exportar a Excel:', error);
+      toast.error('Error al exportar a Excel');
+    } finally {
+      setExporting(false);
+    }
   };
+
+  // EXPORTACIÓN REAL A PDF
+  // SOLUCIÓN ALTERNATIVA: Reemplaza la función exportToPDF en Reports.jsx
+
+// EXPORTACIÓN REAL A PDF - VERSIÓN CORREGIDA
+const exportToPDF = async () => {
+  if (!generatedReport) {
+    toast.error('Genera un reporte primero');
+    return;
+  }
+
+  setExporting(true);
+  
+  try {
+    // Método alternativo: usar window.jsPDF si está disponible
+    let jsPDF;
+    
+    // Intentar importar jsPDF de diferentes maneras
+    try {
+      // Método 1: Importación destructurada
+      const jsPDFModule = await import('jspdf');
+      jsPDF = jsPDFModule.jsPDF || jsPDFModule.default;
+    } catch (error) {
+      // Método 2: Si falla, usar script global
+      if (window.jsPDF) {
+        jsPDF = window.jsPDF;
+      } else {
+        throw new Error('jsPDF no está disponible');
+      }
+    }
+
+    // Importar autotable
+    await import('jspdf-autotable');
+    
+    const doc = new jsPDF();
+    
+    // Configurar fuente
+    doc.setFont('helvetica');
+    
+    // Header del documento
+    doc.setFontSize(20);
+    doc.text(generatedReport.title, 14, 22);
+    
+    doc.setFontSize(12);
+    doc.text(`Empresa: ${settings.company}`, 14, 35);
+    doc.text(`Fecha: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 42);
+    doc.text(`Período: ${dateRange.from} al ${dateRange.to}`, 14, 49);
+    
+    // Resumen ejecutivo
+    doc.setFontSize(14);
+    doc.text('Resumen Ejecutivo', 14, 65);
+    
+    let yPosition = 75;
+    doc.setFontSize(10);
+    
+    Object.entries(generatedReport.summary).forEach(([key, value]) => {
+      const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+      const formattedValue = typeof value === 'number' && key.includes('Value') ? 
+        formatCurrency(value) : value.toString();
+      
+      doc.text(`${label}: ${formattedValue}`, 14, yPosition);
+      yPosition += 7;
+    });
+
+    // Tabla de datos principales según el tipo de reporte
+    yPosition += 10;
+
+    switch (generatedReport.type) {
+      case 'inventory':
+        if (generatedReport.data.products.length > 0) {
+          doc.autoTable({
+            head: [['Producto', 'SKU', 'Stock', 'Precio', 'Estado']],
+            body: generatedReport.data.products.slice(0, 30).map(product => [
+              product.name.length > 30 ? product.name.substring(0, 30) + '...' : product.name,
+              product.sku,
+              product.stock.toString(),
+              formatCurrency(product.price),
+              product.stock <= (product.minStock || settings.lowStockThreshold) ? 'Stock Bajo' : 'Normal'
+            ]),
+            startY: yPosition,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [66, 130, 246] }
+          });
+        }
+        break;
+
+      case 'movements':
+        if (generatedReport.data.movements.length > 0) {
+          doc.autoTable({
+            head: [['Fecha', 'Producto', 'Tipo', 'Cantidad', 'Usuario']],
+            body: generatedReport.data.movements.slice(0, 30).map(movement => [
+              format(new Date(movement.date), 'dd/MM/yyyy'),
+              movement.product.length > 25 ? movement.product.substring(0, 25) + '...' : movement.product,
+              movement.type,
+              movement.quantity.toString(),
+              movement.user
+            ]),
+            startY: yPosition,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [66, 130, 246] }
+          });
+        }
+        break;
+
+      case 'sales':
+        if (generatedReport.data.topProducts && generatedReport.data.topProducts.length > 0) {
+          doc.autoTable({
+            head: [['Producto', 'Cantidad Vendida', 'Número de Ventas']],
+            body: generatedReport.data.topProducts.map(product => [
+              product.product.length > 35 ? product.product.substring(0, 35) + '...' : product.product,
+              product.quantity.toString(),
+              product.sales.toString()
+            ]),
+            startY: yPosition,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [66, 130, 246] }
+          });
+        }
+        break;
+
+      case 'alerts':
+        if (generatedReport.data.lowStockProducts.length > 0) {
+          doc.autoTable({
+            head: [['Producto', 'Stock Actual', 'Stock Mínimo', 'Diferencia']],
+            body: generatedReport.data.lowStockProducts.map(product => [
+              product.name.length > 35 ? product.name.substring(0, 35) + '...' : product.name,
+              product.stock.toString(),
+              (product.minStock || settings.lowStockThreshold).toString(),
+              ((product.minStock || settings.lowStockThreshold) - product.stock).toString()
+            ]),
+            startY: yPosition,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [245, 158, 11] }
+          });
+        }
+        break;
+
+      case 'valuation':
+        if (generatedReport.data.topValueProducts.length > 0) {
+          doc.autoTable({
+            head: [['Producto', 'Stock', 'Precio Unit.', 'Valor Total']],
+            body: generatedReport.data.topValueProducts.map(product => [
+              product.name.length > 30 ? product.name.substring(0, 30) + '...' : product.name,
+              product.stock.toString(),
+              formatCurrency(product.price),
+              formatCurrency(product.totalValue)
+            ]),
+            startY: yPosition,
+            styles: { fontSize: 8 },
+            headStyles: { fillColor: [66, 130, 246] }
+          });
+        }
+        break;
+    }
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(
+        `Página ${i} de ${pageCount} - Generado por ${settings.company}`,
+        14,
+        doc.internal.pageSize.height - 10
+      );
+    }
+
+    // Descargar archivo
+    const fileName = `${generatedReport.title.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+    doc.save(fileName);
+    
+    toast.success('Reporte exportado a PDF correctamente');
+  } catch (error) {
+    console.error('Error detallado al exportar a PDF:', error);
+    
+    // Fallback: exportar como texto plano si falla PDF
+    try {
+      const textContent = generateTextReport(generatedReport);
+      const blob = new Blob([textContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${generatedReport.title.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd')}.txt`;
+      link.click();
+      URL.revokeObjectURL(url);
+      
+      toast.success('Reporte exportado como archivo de texto');
+    } catch (fallbackError) {
+      toast.error('Error al exportar el reporte. Intenta con Excel.');
+    }
+  } finally {
+    setExporting(false);
+  }
+};
+
+// Función auxiliar para generar reporte en texto plano como fallback
+const generateTextReport = (report) => {
+  let content = `${report.title}\n`;
+  content += `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')}\n`;
+  content += `Empresa: ${settings.company}\n`;
+  content += `Período: ${dateRange.from} al ${dateRange.to}\n\n`;
+  
+  content += 'RESUMEN EJECUTIVO:\n';
+  Object.entries(report.summary).forEach(([key, value]) => {
+    const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+    const formattedValue = typeof value === 'number' && key.includes('Value') ? 
+      formatCurrency(value) : value.toString();
+    content += `${label}: ${formattedValue}\n`;
+  });
+  
+  content += '\n--- FIN DEL REPORTE ---';
+  return content;
+};
 
   const selectedReportType = reportTypes.find(r => r.id === selectedReport);
 
@@ -412,7 +780,7 @@ const Reports = () => {
             >
               {loading ? (
                 <>
-                  <span className="spinner-border spinner-border-sm me-2" />
+                  <Spinner size="sm" className="me-2" />
                   Generando...
                 </>
               ) : (
@@ -464,12 +832,30 @@ const Reports = () => {
             <h5 className="mb-0">{generatedReport.title}</h5>
             <div className="d-flex gap-2">
               <Button 
-                variant="outline-success" 
+                variant="success" 
                 size="sm"
-                onClick={exportReport}
+                onClick={exportToExcel}
+                disabled={exporting}
               >
-                <FaDownload className="me-1" />
-                Exportar Excel
+                {exporting ? (
+                  <Spinner size="sm" className="me-1" />
+                ) : (
+                  <FaFileExcel className="me-1" />
+                )}
+                Excel
+              </Button>
+              <Button 
+                variant="danger" 
+                size="sm"
+                onClick={exportToPDF}
+                disabled={exporting}
+              >
+                {exporting ? (
+                  <Spinner size="sm" className="me-1" />
+                ) : (
+                  <FaFilePdf className="me-1" />
+                )}
+                PDF
               </Button>
               <Button 
                 variant="outline-secondary" 
@@ -691,25 +1077,33 @@ const SalesReportContent = ({ report, formatCurrency }) => (
     </Row>
 
     {/* Top productos */}
-    <h6>Productos Más Vendidos</h6>
-    <Table responsive>
-      <thead>
-        <tr>
-          <th>Producto</th>
-          <th className="text-center">Unidades Vendidas</th>
-          <th className="text-center">Número de Ventas</th>
-        </tr>
-      </thead>
-      <tbody>
-        {report.data.topProducts.map((product, index) => (
-          <tr key={index}>
-            <td>{product.product}</td>
-            <td className="text-center">{product.quantity}</td>
-            <td className="text-center">{product.sales}</td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
+    {report.data.topProducts.length > 0 ? (
+      <>
+        <h6>Productos Más Vendidos</h6>
+        <Table responsive>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th className="text-center">Unidades Vendidas</th>
+              <th className="text-center">Número de Ventas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.data.topProducts.map((product, index) => (
+              <tr key={index}>
+                <td>{product.product}</td>
+                <td className="text-center">{product.quantity}</td>
+                <td className="text-center">{product.sales}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </>
+    ) : (
+      <Alert variant="info">
+        No se encontraron ventas en el período seleccionado.
+      </Alert>
+    )}
   </div>
 );
 
@@ -795,6 +1189,12 @@ const AlertsReportContent = ({ report }) => (
           </tbody>
         </Table>
       </>
+    )}
+
+    {report.data.lowStockProducts.length === 0 && report.data.outOfStockProducts.length === 0 && (
+      <Alert variant="success">
+        ¡Excelente! No hay productos con alertas de stock en este momento.
+      </Alert>
     )}
   </div>
 );

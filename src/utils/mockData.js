@@ -1,135 +1,127 @@
 // src/utils/mockData.js
-
 export const DEMO_PRODUCTS = [
   {
     id: 1,
-    name: "Arena Perlada 5 kg",
-    sku: "AP-5KG-001",
-    stock: 120,
-    minStock: 30,
-    price: 8.50,
+    name: "Arena Fina 5 kg",
+    sku: "AF-5KG-001",
     category: "Arena para Gatos",
     location: "Almacén Principal",
-    createdAt: "2024-01-15T10:00:00Z",
-    lastMovement: "2024-07-03T14:30:00Z"
+    price: 25.50,
+    stock: 50,
+    minStock: 10,
+    description: "Arena fina para gatos, absorción rápida",
+    createdAt: "2024-01-01T00:00:00.000Z"
   },
   {
     id: 2,
     name: "Arena Perlada 10 kg",
     sku: "AP-10KG-002", 
-    stock: 80,
-    minStock: 20,
-    price: 15.00,
     category: "Arena para Gatos",
     location: "Almacén Principal",
-    createdAt: "2024-01-15T10:05:00Z",
-    lastMovement: "2024-07-03T15:00:00Z"
+    price: 45.00,
+    stock: 8,
+    minStock: 10,
+    description: "Arena perlada premium, control de olores",
+    createdAt: "2024-01-02T00:00:00.000Z"
   },
   {
     id: 3,
-    name: "Arena Perlada 25 kg",
-    sku: "AP-25KG-003",
-    stock: 40,
-    minStock: 10,
-    price: 35.00,
+    name: "Arena Granulada 25 kg",
+    sku: "AG-25KG-003",
     category: "Arena para Gatos", 
-    location: "Almacén Principal",
-    createdAt: "2024-01-15T10:10:00Z",
-    lastMovement: "2024-07-02T09:15:00Z"
+    location: "Almacén Secundario",
+    price: 85.00,
+    stock: 2,
+    minStock: 5,
+    description: "Arena granulada para uso industrial",
+    createdAt: "2024-01-03T00:00:00.000Z"
   },
   {
     id: 4,
     name: "Arena Perlada 50 kg",
     sku: "AP-50KG-004",
-    stock: 15,
-    minStock: 5,
-    price: 65.00,
     category: "Arena para Gatos",
     location: "Almacén Principal", 
-    createdAt: "2024-01-15T10:15:00Z",
-    lastMovement: "2024-07-01T11:45:00Z"
+    price: 180.00,
+    stock: 0,
+    minStock: 3,
+    description: "Arena perlada industrial 50kg",
+    createdAt: "2024-01-04T00:00:00.000Z"
   },
   {
     id: 5,
-    name: "Arena Fina 5 kg",
-    sku: "AF-5KG-005",
-    stock: 150,
-    minStock: 40,
-    price: 7.00,
-    category: "Arena para Gatos",
-    location: "Almacén Principal",
-    createdAt: "2024-02-01T09:00:00Z", 
-    lastMovement: "2024-07-03T16:20:00Z"
+    name: "Comedero Automático",
+    sku: "CA-AUTO-005",
+    category: "Accesorios",
+    location: "Tienda",
+    price: 120.00,
+    stock: 15,
+    minStock: 5,
+    description: "Comedero automático con temporizador",
+    createdAt: "2024-01-05T00:00:00.000Z"
   },
   {
     id: 6,
-    name: "Arena Granulada 25 kg",
-    sku: "AG-25KG-006",
-    stock: 8,
-    minStock: 15,
-    price: 32.00,
-    category: "Arena para Gatos",
-    location: "Almacén Principal",
-    createdAt: "2024-02-15T11:30:00Z",
-    lastMovement: "2024-06-30T08:00:00Z"
+    name: "Juguete Ratón",
+    sku: "JR-RAT-006",
+    category: "Juguetes",
+    location: "Tienda",
+    price: 12.50,
+    stock: 353,
+    minStock: 20,
+    description: "Juguete ratón de peluche con hierba gatera",
+    createdAt: "2024-01-06T00:00:00.000Z"
   }
 ];
 
 export const DEMO_MOVEMENTS = [
   {
     id: 1,
-    productId: 2,
-    product: "Arena Perlada 10 kg",
-    type: "salida",
-    quantity: 5,
-    reason: "Venta",
-    user: "Eduardo",
-    date: "2024-07-03T15:00:00Z",
-    reference: "VEN-2024-001"
-  },
-  {
-    id: 2, 
-    productId: 5,
+    productId: 1,
     product: "Arena Fina 5 kg",
     type: "entrada",
     quantity: 50,
     reason: "Compra",
     user: "María",
-    date: "2024-07-03T16:20:00Z",
-    reference: "COM-2024-015"
+    date: "2024-07-03T11:20:00.000Z",
+    reference: "COM-2024-015",
+    notes: ""
+  },
+  {
+    id: 2,
+    productId: 2,
+    product: "Arena Perlada 10 kg", 
+    type: "salida",
+    quantity: 5,
+    reason: "Venta",
+    user: "Eduardo",
+    date: "2024-07-03T10:00:00.000Z",
+    reference: "VEN-2024-001",
+    notes: ""
   },
   {
     id: 3,
-    productId: 6,
-    product: "Arena Granulada 25 kg", 
-    type: "salida",
+    productId: 3,
+    product: "Arena Granulada 25 kg",
+    type: "salida", 
     quantity: 2,
     reason: "Venta",
     user: "Juan",
-    date: "2024-07-02T09:15:00Z",
-    reference: "VEN-2024-002"
+    date: "2024-07-02T04:15:00.000Z",
+    reference: "VEN-2024-002",
+    notes: ""
   },
   {
     id: 4,
     productId: 4,
     product: "Arena Perlada 50 kg",
-    type: "salida", 
+    type: "salida",
     quantity: 1,
-    reason: "Venta",
+    reason: "Venta", 
     user: "Pedro",
-    date: "2024-07-01T11:45:00Z",
-    reference: "VEN-2024-003"
-  },
-  {
-    id: 5,
-    productId: 3,
-    product: "Arena Perlada 25 kg",
-    type: "entrada",
-    quantity: 30,
-    reason: "Abastecimiento mensual",
-    user: "Ana",
-    date: "2024-06-30T08:00:00Z",
-    reference: "COM-2024-014"
+    date: "2024-07-01T00:00:00.000Z",
+    reference: "VEN-2024-003",
+    notes: ""
   }
 ];
 
@@ -138,106 +130,86 @@ export const DEMO_USERS = [
     id: 1,
     name: "Eduardo",
     username: "admin",
-    password: "admin", // Solo para demo
     email: "admin@econoarena.com",
+    password: "admin",
     role: "admin",
     status: "active",
-    lastAccess: "2024-07-07T08:00:00Z",
-    createdAt: "2024-01-01T00:00:00Z"
+    createdAt: "2024-01-01T00:00:00.000Z",
+    lastAccess: "2024-07-07T03:00:00.000Z"
   },
   {
     id: 2,
-    name: "María Operadora", 
-    username: "operator",
-    password: "operator",
+    name: "María Operadora",
+    username: "operator", 
     email: "operator@econoarena.com",
+    password: "operator",
     role: "operator",
     status: "active",
-    lastAccess: "2024-07-07T07:30:00Z",
-    createdAt: "2024-01-15T00:00:00Z"
+    createdAt: "2024-01-02T00:00:00.000Z",
+    lastAccess: "2024-07-07T02:30:00.000Z"
   },
   {
     id: 3,
     name: "Juan Visualizador",
-    username: "viewer", 
+    username: "viewer",
+    email: "viewer@econoarena.com", 
     password: "viewer",
-    email: "viewer@econoarena.com",
     role: "viewer",
     status: "active",
-    lastAccess: "2024-07-06T16:00:00Z",
-    createdAt: "2024-02-01T00:00:00Z"
+    createdAt: "2024-01-03T00:00:00.000Z",
+    lastAccess: "2024-07-06T11:00:00.000Z"
   },
   {
     id: 4,
     name: "Carlos Almacén",
     username: "carlos",
-    password: "carlos123",
     email: "almacen@econoarena.com",
-    role: "operator",
+    password: "carlos123",
+    role: "operator", 
     status: "inactive",
-    lastAccess: "2024-06-28T16:00:00Z",
-    createdAt: "2024-03-01T00:00:00Z"
+    createdAt: "2024-01-04T00:00:00.000Z",
+    lastAccess: "2024-06-28T11:00:00.000Z"
   }
 ];
 
-// Categorías disponibles
 export const CATEGORIES = [
   "Arena para Gatos",
-  "Accesorios",
+  "Accesorios", 
   "Alimentos",
   "Juguetes",
   "Higiene"
 ];
 
-// Ubicaciones del almacén
 export const LOCATIONS = [
   "Almacén Principal",
-  "Almacén Secundario", 
-  "Tienda",
+  "Almacén Secundario",
+  "Tienda", 
   "Depósito"
 ];
 
-// Razones comunes para movimientos
 export const MOVEMENT_REASONS = {
   entrada: [
     "Compra",
     "Devolución cliente",
+    "Transferencia entrada",
     "Ajuste inventario",
-    "Abastecimiento mensual",
+    "Entrada rápida",
     "Stock inicial"
   ],
   salida: [
     "Venta",
-    "Devolución proveedor",
+    "Devolución proveedor", 
+    "Transferencia salida",
     "Producto dañado",
-    "Ajuste inventario",
-    "Muestra gratis"
+    "Merma",
+    "Salida rápida",
+    "Muestra gratuita"
   ]
 };
 
-// Datos para gráficos de análisis
+// DATOS PARA GRÁFICOS - Estos se calcularán en tiempo real
 export const CHART_DATA = {
-  stockTrend: [
-    { month: "Ene", stock: 1100 },
-    { month: "Feb", stock: 1180 },
-    { month: "Mar", stock: 1250 },
-    { month: "Abr", stock: 1320 },
-    { month: "May", stock: 1280 },
-    { month: "Jun", stock: 1350 },
-    { month: "Jul", stock: 1245 }
-  ],
-  entriesVsExits: [
-    { month: "Ene", entradas: 80, salidas: 65 },
-    { month: "Feb", entradas: 95, salidas: 75 },
-    { month: "Mar", entradas: 110, salidas: 85 },
-    { month: "Abr", entradas: 85, salidas: 90 },
-    { month: "May", entradas: 120, salidas: 95 },
-    { month: "Jun", entradas: 105, salidas: 110 },
-    { month: "Jul", entradas: 90, salidas: 75 }
-  ],
-  categoryDistribution: [
-    { name: "Arena Perlada", value: 60, color: "#3b82f6" },
-    { name: "Arena Fina", value: 25, color: "#10b981" },
-    { name: "Arena Granulada", value: 15, color: "#f59e0b" }
-  ]
+  // Ya no se usará - se calculará desde datos reales
+  stockTrend: [],
+  entriesVsExits: []
 };

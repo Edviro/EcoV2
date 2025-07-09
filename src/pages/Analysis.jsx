@@ -25,9 +25,14 @@ import {
   FaEquals
 } from 'react-icons/fa';
 import { useApp } from '../context/AppContext';
-import { CHART_DATA } from '../utils/mockData';
-import { format, subDays, startOfMonth } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { 
+  calculateStockTrend,
+  calculateMonthlyMovements,
+  calculateHistoricalStock,
+  calculateTopMovedProducts,
+  generateCategoryDistribution,
+  calculateInventoryTurnover
+} from '../utils/formatters';
 
 const Analysis = () => {
   const { 
@@ -37,41 +42,27 @@ const Analysis = () => {
     settings 
   } = useApp();
 
-  const [timeRange, setTimeRange] = useState('30'); // días
+  const [timeRange, setTimeRange] = useState('30');
 
-  // Procesar datos para gráficos
+  // Procesar datos REALES para gráficos
   const processChartData = () => {
     const days = parseInt(timeRange);
-    const today = new Date();
-    const startDate = subDays(today, days);
 
-    // Tendencia de stock en el tiempo (simulado con datos de ejemplo)
-    const stockTrendData = CHART_DATA.stockTrend.map(item => ({
+    // 1. Tendencia de stock REAL (últimos 7 meses)
+    const stockTrendData = calculateHistoricalStock(products, movements);
+
+    // 2. Entradas vs Salidas REAL por mes
+    const entriesVsExitsData = calculateMonthlyMovements(movements, 6);
+
+    // 3. Distribución por categoría REAL
+    const categoryData = generateCategoryDistribution(products);
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+    const categoryDataWithColors = categoryData.map((item, index) => ({
       ...item,
-      stock: item.stock + Math.floor(Math.random() * 200) - 100 // Variación aleatoria
+      color: colors[index % colors.length]
     }));
 
-    // Entradas vs Salidas por mes
-    const entriesVsExitsData = CHART_DATA.entriesVsExits;
-
-    // Distribución por categoría
-    const categoryData = products.reduce((acc, product) => {
-      const existing = acc.find(item => item.name === product.category);
-      if (existing) {
-        existing.value += product.stock;
-        existing.count += 1;
-      } else {
-        acc.push({
-          name: product.category,
-          value: product.stock,
-          count: 1,
-          color: getRandomColor(acc.length)
-        });
-      }
-      return acc;
-    }, []);
-
-    // Top productos por stock
+    // 4. Top productos por stock REAL
     const topProductsData = products
       .sort((a, b) => b.stock - a.stock)
       .slice(0, 10)
@@ -81,27 +72,10 @@ const Analysis = () => {
         value: product.stock * product.price
       }));
 
-    // Movimientos por día (últimos 7 días)
-    const movementsByDay = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(today, i);
-      const dayMovements = movements.filter(m => {
-        const movementDate = new Date(m.date);
-        return format(movementDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
-      });
+    // 5. Movimientos por día REAL (últimos 7 días)
+    const movementsByDay = calculateStockTrend(movements, 7);
 
-      const entries = dayMovements.filter(m => m.type === 'entrada').length;
-      const exits = dayMovements.filter(m => m.type === 'salida').length;
-
-      movementsByDay.push({
-        date: format(date, 'dd/MM', { locale: es }),
-        entradas: entries,
-        salidas: exits,
-        total: entries + exits
-      });
-    }
-
-    // Estado del stock (normal, bajo, crítico)
+    // 6. Estado del stock REAL
     const stockStatusData = [
       {
         name: 'Stock Normal',
@@ -120,24 +94,27 @@ const Analysis = () => {
       }
     ];
 
+    // 7. Productos más movidos REAL
+    const topMovedProducts = calculateTopMovedProducts(movements, 10);
+
+    // 8. Rotación de inventario REAL
+    const inventoryTurnover = calculateInventoryTurnover(movements, products, days);
+
     return {
       stockTrendData,
       entriesVsExitsData,
-      categoryData,
+      categoryData: categoryDataWithColors,
       topProductsData,
       movementsByDay,
-      stockStatusData
+      stockStatusData,
+      topMovedProducts,
+      inventoryTurnover
     };
-  };
-
-  const getRandomColor = (index) => {
-    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316'];
-    return colors[index % colors.length];
   };
 
   const chartData = processChartData();
 
-  // Calcular métricas de tendencia
+  // Calcular tendencias REALES
   const calculateTrend = (data, field) => {
     if (data.length < 2) return 'equal';
     const latest = data[data.length - 1][field];
@@ -149,7 +126,7 @@ const Analysis = () => {
   };
 
   const stockTrend = calculateTrend(chartData.stockTrendData, 'stock');
-  const movementTrend = calculateTrend(chartData.movementsByDay, 'total');
+  const movementTrend = calculateTrend(chartData.movementsByDay, 'entries');
 
   const getTrendIcon = (trend) => {
     switch (trend) {
@@ -167,6 +144,15 @@ const Analysis = () => {
     }
   };
 
+  // Calcular métricas avanzadas
+  const advancedMetrics = {
+    totalMovements: movements.length,
+    avgMovementsPerDay: movements.length / Math.max(1, Math.ceil((new Date() - new Date(Math.min(...movements.map(m => new Date(m.date))))) / (1000 * 60 * 60 * 24))),
+    totalValue: products.reduce((sum, p) => sum + (p.stock * p.price), 0),
+    topCategoryValue: chartData.categoryData.reduce((max, cat) => cat.value > max.value ? cat : max, { value: 0 }),
+    fastestTurnover: chartData.inventoryTurnover.find(p => p.turnoverRate > 0 && p.turnoverRate !== Infinity) || { turnoverRate: 0, name: 'N/A' }
+  };
+
   return (
     <div>
       {/* Controles */}
@@ -180,7 +166,7 @@ const Analysis = () => {
                 <Badge bg="info">Últimos {timeRange} días</Badge>
               </h5>
               <small className="text-muted">
-                Visualiza tendencias y patrones de tu inventario
+                Visualiza tendencias y patrones de tu inventario con datos reales
               </small>
             </Col>
             <Col xs="auto">
@@ -198,16 +184,16 @@ const Analysis = () => {
         </Card.Body>
       </Card>
 
-      {/* Métricas rápidas con tendencias */}
+      {/* Métricas rápidas con tendencias REALES */}
       <Row className="mb-4">
         <Col md={6} lg={3} className="mb-3">
           <Card className="metric-card">
             <div className="d-flex justify-content-between align-items-start">
               <div>
                 <h2 className="metric-value">
-                  {chartData.stockTrendData[chartData.stockTrendData.length - 1]?.stock || 0}
+                  {products.reduce((sum, p) => sum + p.stock, 0).toLocaleString()}
                 </h2>
-                <p className="metric-label">Stock Total</p>
+                <p className="metric-label">Stock Total Real</p>
                 <Badge bg={getTrendColor(stockTrend)} className="d-flex align-items-center gap-1" style={{ width: 'fit-content' }}>
                   {getTrendIcon(stockTrend)}
                   Tendencia
@@ -222,12 +208,11 @@ const Analysis = () => {
             <div className="d-flex justify-content-between align-items-start">
               <div>
                 <h2 className="metric-value">
-                  {chartData.movementsByDay.reduce((sum, day) => sum + day.total, 0)}
+                  {advancedMetrics.totalMovements}
                 </h2>
-                <p className="metric-label">Movimientos ({timeRange}d)</p>
-                <Badge bg={getTrendColor(movementTrend)} className="d-flex align-items-center gap-1" style={{ width: 'fit-content' }}>
-                  {getTrendIcon(movementTrend)}
-                  Actividad
+                <p className="metric-label">Total Movimientos</p>
+                <Badge bg="info">
+                  {advancedMetrics.avgMovementsPerDay.toFixed(1)}/día
                 </Badge>
               </div>
             </div>
@@ -255,11 +240,11 @@ const Analysis = () => {
             <div className="d-flex justify-content-between align-items-start">
               <div>
                 <h2 className="metric-value">
-                  {formatCurrency(chartData.topProductsData.reduce((sum, p) => sum + p.value, 0))}
+                  {formatCurrency(advancedMetrics.totalValue)}
                 </h2>
-                <p className="metric-label">Valor Top 10</p>
+                <p className="metric-label">Valor Total Real</p>
                 <Badge bg="secondary">
-                  {((chartData.topProductsData.reduce((sum, p) => sum + p.value, 0) / products.reduce((sum, p) => sum + (p.stock * p.price), 0)) * 100).toFixed(1)}%
+                  {advancedMetrics.topCategoryValue.name || 'N/A'}
                 </Badge>
               </div>
             </div>
@@ -267,16 +252,16 @@ const Analysis = () => {
         </Col>
       </Row>
 
-      {/* Gráficos principales */}
+      {/* Gráficos principales con datos REALES */}
       <Row>
-        {/* Tendencia de Stock */}
+        {/* Tendencia de Stock Histórico REAL */}
         <Col lg={8} className="mb-4">
           <Card>
             <Card.Header>
               <h6 className="mb-0 d-flex align-items-center gap-2">
                 <FaChartLine />
-                Tendencia de Stock
-                <small className="text-muted">Últimos 7 meses</small>
+                Tendencia de Stock Histórico
+                <small className="text-muted">Últimos 7 meses - Datos reales</small>
               </h6>
             </Card.Header>
             <Card.Body>
@@ -307,13 +292,13 @@ const Analysis = () => {
           </Card>
         </Col>
 
-        {/* Estado del Stock */}
+        {/* Estado del Stock REAL */}
         <Col lg={4} className="mb-4">
           <Card>
             <Card.Header>
               <h6 className="mb-0 d-flex align-items-center gap-2">
                 <FaChartPie />
-                Estado de Stock
+                Estado de Stock Real
               </h6>
             </Card.Header>
             <Card.Body>
@@ -340,14 +325,14 @@ const Analysis = () => {
           </Card>
         </Col>
 
-        {/* Entradas vs Salidas */}
+        {/* Entradas vs Salidas REAL */}
         <Col lg={8} className="mb-4">
           <Card>
             <Card.Header>
               <h6 className="mb-0 d-flex align-items-center gap-2">
                 <FaChartBar />
-                Entradas vs Salidas
-                <small className="text-muted">Por mes</small>
+                Entradas vs Salidas Reales
+                <small className="text-muted">Últimos 6 meses</small>
               </h6>
             </Card.Header>
             <Card.Body>
@@ -372,13 +357,13 @@ const Analysis = () => {
           </Card>
         </Col>
 
-        {/* Distribución por Categoría */}
+        {/* Distribución por Categoría REAL */}
         <Col lg={4} className="mb-4">
           <Card>
             <Card.Header>
               <h6 className="mb-0 d-flex align-items-center gap-2">
                 <FaChartPie />
-                Stock por Categoría
+                Stock por Categoría Real
               </h6>
             </Card.Header>
             <Card.Body>
@@ -389,10 +374,10 @@ const Analysis = () => {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, value }) => `${name}: ${value}`}
+                    label={({ name, stock }) => `${name}: ${stock}`}
                     outerRadius={80}
                     fill="#8884d8"
-                    dataKey="value"
+                    dataKey="stock"
                   >
                     {chartData.categoryData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -405,13 +390,13 @@ const Analysis = () => {
           </Card>
         </Col>
 
-        {/* Top Productos por Stock */}
+        {/* Top Productos por Stock REAL */}
         <Col lg={6} className="mb-4">
           <Card>
             <Card.Header>
               <h6 className="mb-0 d-flex align-items-center gap-2">
                 <FaChartBar />
-                Top 10 Productos por Stock
+                Top 10 Productos por Stock Real
               </h6>
             </Card.Header>
             <Card.Body>
@@ -434,13 +419,13 @@ const Analysis = () => {
           </Card>
         </Col>
 
-        {/* Actividad Diaria */}
+        {/* Actividad Diaria REAL */}
         <Col lg={6} className="mb-4">
           <Card>
             <Card.Header>
               <h6 className="mb-0 d-flex align-items-center gap-2">
                 <FaChartLine />
-                Actividad Diaria
+                Actividad Diaria Real
                 <small className="text-muted">Últimos 7 días</small>
               </h6>
             </Card.Header>
@@ -458,19 +443,113 @@ const Analysis = () => {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="entradas" stackId="a" fill="#10b981" name="Entradas" />
-                  <Bar dataKey="salidas" stackId="a" fill="#ef4444" name="Salidas" />
+                  <Bar dataKey="entries" stackId="a" fill="#10b981" name="Entradas" />
+                  <Bar dataKey="exits" stackId="a" fill="#ef4444" name="Salidas" />
                 </BarChart>
               </ResponsiveContainer>
             </Card.Body>
           </Card>
         </Col>
+
+        {/* Productos Más Movidos REAL */}
+        <Col lg={6} className="mb-4">
+          <Card>
+            <Card.Header>
+              <h6 className="mb-0 d-flex align-items-center gap-2">
+                <FaChartBar />
+                Productos Más Movidos
+                <small className="text-muted">Por cantidad total</small>
+              </h6>
+            </Card.Header>
+            <Card.Body>
+              {chartData.topMovedProducts.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={chartData.topMovedProducts.slice(0, 8)}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                    <XAxis 
+                      dataKey="product" 
+                      stroke="var(--text-secondary)" 
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                    />
+                    <YAxis stroke="var(--text-secondary)" />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px'
+                      }}
+                    />
+                    <Bar dataKey="totalQuantity" fill="#8b5cf6" name="Cantidad Total" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-center py-4 text-muted">
+                  No hay suficientes movimientos para mostrar estadísticas
+                </div>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+
+        {/* Rotación de Inventario REAL */}
+        <Col lg={6} className="mb-4">
+          <Card>
+            <Card.Header>
+              <h6 className="mb-0 d-flex align-items-center gap-2">
+                <FaChartLine />
+                Rotación de Inventario
+                <small className="text-muted">Últimos {timeRange} días</small>
+              </h6>
+            </Card.Header>
+            <Card.Body>
+              {chartData.inventoryTurnover.filter(p => p.turnoverRate > 0 && p.turnoverRate !== Infinity).length > 0 ? (
+                <div className="table-responsive">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th className="text-center">Rotación</th>
+                        <th className="text-center">Días Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {chartData.inventoryTurnover
+                        .filter(p => p.turnoverRate > 0 && p.turnoverRate !== Infinity)
+                        .slice(0, 8)
+                        .map((product, index) => (
+                        <tr key={index}>
+                          <td>
+                            <small>{product.name.length > 25 ? product.name.substring(0, 25) + '...' : product.name}</small>
+                          </td>
+                          <td className="text-center">
+                            <Badge bg={product.turnoverRate > 2 ? 'success' : product.turnoverRate > 1 ? 'warning' : 'danger'}>
+                              {product.turnoverRate.toFixed(2)}x
+                            </Badge>
+                          </td>
+                          <td className="text-center">
+                            <small>{Math.round(product.daysOfStock)} días</small>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-muted">
+                  No hay suficientes datos de salidas para calcular rotación
+                </div>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
       </Row>
 
-      {/* Insights automáticos */}
+      {/* Insights automáticos REALES */}
       <Card>
         <Card.Header>
-          <h6 className="mb-0">💡 Insights Automáticos</h6>
+          <h6 className="mb-0">💡 Insights Automáticos (Datos Reales)</h6>
         </Card.Header>
         <Card.Body>
           <Row>
@@ -478,14 +557,19 @@ const Analysis = () => {
               <h6 className="text-primary">Productos</h6>
               <ul className="list-unstyled">
                 <li className="mb-2">
-                  • <strong>{chartData.categoryData[0]?.name}</strong> es la categoría con más stock ({chartData.categoryData[0]?.value} unidades)
+                  • <strong>{chartData.categoryData[0]?.name || 'N/A'}</strong> es la categoría con más stock ({chartData.categoryData[0]?.stock || 0} unidades)
                 </li>
                 <li className="mb-2">
-                  • <strong>{chartData.topProductsData[0]?.name}</strong> es el producto con mayor stock
+                  • <strong>{chartData.topProductsData[0]?.name || 'N/A'}</strong> es el producto con mayor stock
                 </li>
                 <li className="mb-2">
                   • <strong>{chartData.stockStatusData.find(s => s.name === 'Sin Stock')?.value || 0}</strong> productos sin stock requieren reabastecimiento
                 </li>
+                {chartData.topMovedProducts.length > 0 && (
+                  <li className="mb-2">
+                    • <strong>{chartData.topMovedProducts[0].product}</strong> es el producto más movido ({chartData.topMovedProducts[0].totalQuantity} unidades)
+                  </li>
+                )}
               </ul>
             </Col>
             <Col md={6}>
@@ -495,12 +579,42 @@ const Analysis = () => {
                   • Stock total muestra tendencia {stockTrend === 'up' ? 'creciente' : stockTrend === 'down' ? 'decreciente' : 'estable'}
                 </li>
                 <li className="mb-2">
-                  • Actividad de movimientos es {movementTrend === 'up' ? 'creciente' : movementTrend === 'down' ? 'decreciente' : 'estable'}
+                  • Promedio de {advancedMetrics.avgMovementsPerDay.toFixed(1)} movimientos por día
                 </li>
                 <li className="mb-2">
-                  • {chartData.movementsByDay.reduce((sum, day) => sum + day.entradas, 0)} entradas vs {chartData.movementsByDay.reduce((sum, day) => sum + day.salidas, 0)} salidas esta semana
+                  • {chartData.movementsByDay.reduce((sum, day) => sum + day.entries, 0)} entradas vs {chartData.movementsByDay.reduce((sum, day) => sum + day.exits, 0)} salidas esta semana
                 </li>
+                {advancedMetrics.fastestTurnover.turnoverRate > 0 && (
+                  <li className="mb-2">
+                    • <strong>{advancedMetrics.fastestTurnover.name}</strong> tiene la mayor rotación ({advancedMetrics.fastestTurnover.turnoverRate.toFixed(1)}x/año)
+                  </li>
+                )}
               </ul>
+            </Col>
+          </Row>
+          
+          {/* Métricas adicionales */}
+          <Row className="mt-3 pt-3 border-top">
+            <Col md={12}>
+              <h6 className="text-info">Métricas de Rendimiento</h6>
+              <div className="d-flex gap-4 flex-wrap">
+                <div className="text-center">
+                  <div className="h5 mb-0">{formatCurrency(advancedMetrics.totalValue / products.length)}</div>
+                  <small className="text-muted">Valor promedio por producto</small>
+                </div>
+                <div className="text-center">
+                  <div className="h5 mb-0">{(products.reduce((sum, p) => sum + p.stock, 0) / products.length).toFixed(0)}</div>
+                  <small className="text-muted">Stock promedio por producto</small>
+                </div>
+                <div className="text-center">
+                  <div className="h5 mb-0">{((chartData.stockStatusData.find(s => s.name === 'Stock Normal')?.value || 0) / products.length * 100).toFixed(0)}%</div>
+                  <small className="text-muted">Productos con stock normal</small>
+                </div>
+                <div className="text-center">
+                  <div className="h5 mb-0">{chartData.categoryData.length}</div>
+                  <small className="text-muted">Categorías con productos</small>
+                </div>
+              </div>
             </Col>
           </Row>
         </Card.Body>
